@@ -23,36 +23,37 @@ from util.prompt_templates.sys_update_prompt_mermaid import SYS_UPDATE_PROMPT_ME
 def invoke_model(
     modelId, inference_params, messages, system_prompt, data_placeholder=None
 ):
-#    bedrock = Session().client(
-#        service_name="bedrock-runtime",
-#    )
-#    result = str()
-#    response = bedrock.converse_stream(
-#        modelId=modelId,
-#        messages=messages,
-#        
-#        system=[{"text": system_prompt}],
-#        inferenceConfig={
-#            "maxTokens": 4000,
-#            "temperature": inference_params["temperature"],
-#            "topP": inference_params["top_p"],
-#        },
-#        additionalModelRequestFields={"top_k": inference_params["top_k"]},
-#    )
-#
-#    stream = response.get("stream")
-#    if stream:
-#        for event in stream:
-#
-#            if "contentBlockDelta" in event:
-#                result += event["contentBlockDelta"]["delta"]["text"]
-#                with data_placeholder.container():
-#                    st.write(result)
+    bedrock = Session().client(
+        service_name="bedrock-runtime",
+    )
+    result = str()
+    response = bedrock.converse_stream(
+        modelId=modelId,
+        messages=messages,
+        
+        system=[{"text": system_prompt}],
+        inferenceConfig={
+            "maxTokens": 4000,
+            "temperature": inference_params["temperature"],
+            "topP": inference_params["top_p"],
+        },
+        additionalModelRequestFields={"top_k": inference_params["top_k"]},
+    )
+
+    stream = response.get("stream")
+    if stream:
+        for event in stream:
+
+            if "contentBlockDelta" in event:
+                result += event["contentBlockDelta"]["delta"]["text"]
+                with data_placeholder.container():
+                    st.write(result)
+
 # JPL mock
-    st.write("modelId: ", modelId)    
-    st.write(messages)
-    st.write(system_prompt)
-    result = "mock result"
+#    st.write("modelId: ", modelId)    
+#    st.write(messages)
+#    st.write(system_prompt)
+#    result = "mock result"
     
     return result
 
