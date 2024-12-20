@@ -1,0 +1,515 @@
+buildspec.yaml
+
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $(echo $BASE_IMAGE_URI | cut -d'/' -f1)
+  build:
+    commands:
+      - echo Building the Docker image...
+      - docker pull $BASE_IMAGE_URI
+      - docker build -t $TARGET_REPO_URI:latest .
+      - docker tag $TARGET_REPO_URI:latest $TARGET_REPO_URI:latest
+  post_build:
+    commands:
+      - echo Pushing the Docker image to ECR...
+      - docker push $TARGET_REPO_URI:latest
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: yes
+
+				
+codepipeline.yaml
+
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CodePipeline to build Docker image using base image from ECR and WAR file from S3, then push to ECR.
+
+Parameters:
+  ECRBaseImageUri:
+    Type: String
+    Default: 334189989353.dkr.ecr.us-east-1.amazonaws.com/baseimage
+    Description: URI of the base image in ECR
+  SourceCodeBucketName:
+    Type: String
+    Default: app-war-bucket
+    Description: Name of the S3 bucket where the source code is stored
+  SourcecodeFileName:
+    Type: String
+    Default: code.zip
+    Description: Name of the source code object inside the s3 bucket
+  ECRTargetRepoUri:
+    Type: String
+    Default: 334189989353.dkr.ecr.us-east-1.amazonaws.com/appimage
+    Description: URI of the target ECR repository
+
+Resources:
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+                  - ecr:ListImages
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetProjects
+                  - 's3:*'
+                Resource: '*'
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:GetAuthorizationToken
+                  - ecr:ListImages
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: BuildDockerImage
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: BASE_IMAGE_URI
+            Value: !Ref ECRBaseImageUri
+          - Name: TARGET_REPO_URI
+            Value: !Ref ECRTargetRepoUri
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 60
+      Cache:
+        Type: NO_CACHE
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - RunOrder: 1
+              OutputArtifacts:
+                - Name: SourceOutput
+              ActionTypeId:
+                Provider: S3
+                Owner: AWS
+                Version: '1'
+                Category: Source
+              Name: Source
+              Configuration:
+                S3Bucket: !Ref SourceCodeBucketName
+                S3ObjectKey: !Ref SourcecodeFileName
+                PollForSourceChanges: 'false'
+              InputArtifacts: []
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: 1
+
+Outputs:
+  CodePipelineName:
+    Description: Name of the CodePipeline
+    Value: !Ref CodePipeline
+  ArtifactBucketName:
+    Description: Name of the S3 bucket for artifacts
+    Value: !Ref PipelineArtifactBucket
+							
+ecs-stack.yaml
+
+		AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Cluster with Fargate Launchtype
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-043d79fd0cc13f7cc
+    Description: VPC ID where the ECS cluster is launched
+  ECSTaskSubnetIds:
+    Type: CommaDelimitedList
+    Default: subnet-034354a5ac5eb91df, subnet-0d4cca4495751f428
+    Description: Select Subnets for running ecs tasks.
+  LoadBalancerSubnetIds:
+    Type: CommaDelimitedList
+    Default: subnet-0f4d0c8b768997ac9, subnet-092a2291185ab3699
+    Description: |
+      Select Subnets for running load balancer. Make sure to select public subnets so that i can be application hosted on ecs can be accessed from internet.
+  ClusterName:
+    Type: String
+    Description: Name of the ECS Cluster
+    Default: ecs-demo-cluster
+  TaskCPU:
+    Type: Number
+    Default: 256
+    Description: 'Number of CPU units used by the task. For Fargate tasks, this
+      value must be one of the following: 256, 512, 1024, 2048, or 4096.'
+  TaskMemory:
+    Type: Number
+    Default: 512
+    Description: 'Amount of memory (in MiB) used by the task. For Fargate tasks,
+      this value must be one of the following: 512, 1024, 2048, 3072, or 4096.'
+  GitHubOwner:
+    Type: String
+    Default: mohitkumar098
+    Description: GitHub repository owner
+  GitHubRepo:
+    Type: String
+    Default: ecs-demo
+    Description: GitHub repository name
+  GitHubBranch:
+    Type: String
+    Default: master
+    Description: GitHub repository branch
+  GitHubToken:
+    Type: String
+    Default: '123'
+    Description: GitHub personal access token
+Resources:
+  ##Generate resource for creating ecr repository
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${ClusterName}-repo
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+
+  ##Write a resource for creating ecs task execution role to pull images from ecr with managed policy
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-task-execution-role
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  # ECS Resources
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+
+  ##Create a Cloudformation Resource for creating SecurityGroup
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub ${ClusterName}-alb-sg
+      GroupDescription: Security Group for ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  ##Write a cloudformation template for creating application loadbalancer and target groups
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${ClusterName}-alb
+      Subnets: !Ref LoadBalancerSubnetIds
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      LoadBalancerAttributes:
+        - Key: idle_timeout.timeout_seconds
+          Value: '30'
+
+  ##Write a cloudformation template for creating listener and rules for application loadbalancer
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ##Can you create cloudformation resource for creating log group to store logs
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub ${ClusterName}-logs
+      RetentionInDays: 30
+
+  ## Generate TaskDefinition for ECS Fargate LaunchType
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${ClusterName}-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
+      Cpu: !Ref TaskCPU
+      Memory: !Ref TaskMemory
+      ContainerDefinitions:
+        - Name: !Sub ${ClusterName}-task-container
+          # Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}:latest
+          Image: nginx:latest
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchLogsGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  ##Can you create cloudformation resource for creating target group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${ClusterName}-tg
+      VpcId: !Ref VpcId
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+      Matcher:
+        HttpCode: 200
+
+  ##Can you create cloudformation resource for creating ECS Service
+  ECSService:
+    DependsOn:
+      - HTTPListener
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${ClusterName}-service
+      Cluster: !Ref ECSCluster
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref ALBSecurityGroup
+          Subnets: !Ref ECSTaskSubnetIds
+      TaskDefinition: !Ref ECSTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${ClusterName}-task-container
+          ContainerPort: 80
+          TargetGroupArn: !Ref TargetGroup
+
+  ##Can you create cloudformation resource for creating codebuild project role for pushing image to ecr
+  ECRCodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-codebuild-role
+      Description: Role for CodeBuild to push image to ECR
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+  ##Can you create cloudformation resource for creating codepipeline role
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-codepipeline-role
+      Description: Role for CodePipeline
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess
+        - arn:aws:iam::aws:policy/AWSCodeBuildAdminAccess
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+  ##Can you create a cloudformation for storing codepipeline artifacts to s3
+  ArtifactStore:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${ClusterName}-codepipeline-artifacts
+
+  ##Can you create a codepipeline for deploying your application to ecs cluster with bitbucket as source
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn:
+      - ECSService
+    Properties:
+      Name: !Sub ${ClusterName}-pipeline
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactStore
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubToken
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+        - Name: Deploy
+          Actions:
+            - Name: DeployAction
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ECS
+              InputArtifacts:
+                - Name: BuildOutput
+              Configuration:
+                ClusterName: !Ref ClusterName
+                ServiceName: !Sub ${ClusterName}-service
+                #FileName: imagedefinitions.json
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${ClusterName}-codebuild-project
+      Description: CodeBuild project for building Docker image
+      TimeoutInMinutes: 10
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:3.0
+        Type: LINUX_CONTAINER
+      ServiceRole: !GetAtt ECRCodeBuildRole.Arn
+      Source:
+        Type: CODEPIPELINE
+
+Outputs:
+  ClusterName:
+    Description: The ECS cluster into which to launch resources
+    Value: !Ref ECSCluster
+  # ECSTaskExecutionRole:
+  #   Description: The role used to start up a task
+  #   Value: !Ref ECSTaskExecutionRole					
+							
+Dockerfile
+
+FROM 334189989353.dkr.ecr.us-east-1.amazonaws.com/baseimage
+EXPOSE 8080
+COPY helloworld.war /jboss-eap-7.4/standalone/deployments/
+CMD ["/jboss-eap-7.4/bin/standalone.sh", "-b", "0.0.0.0"]							
+							

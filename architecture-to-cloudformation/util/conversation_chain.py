@@ -16,39 +16,43 @@ from util.prompt_templates.code_prompt_terraform import CODE_PROMPT_TERRAFORM
 from util.prompt_templates.sys_code_prompt_terraform import SYS_CODE_PROMPT_TERRAFORM
 from util.prompt_templates.sys_update_prompt_terraform import SYS_UPDATE_PROMPT_TERRAFORM
 
+from util.prompt_templates.code_prompt_mermaid import CODE_PROMPT_MERMAID
+from util.prompt_templates.sys_code_prompt_mermaid import SYS_CODE_PROMPT_MERMAID
+from util.prompt_templates.sys_update_prompt_mermaid import SYS_UPDATE_PROMPT_MERMAID
+
 def invoke_model(
     modelId, inference_params, messages, system_prompt, data_placeholder=None
 ):
-    bedrock = Session().client(
-        service_name="bedrock-runtime",
-    )
-    result = str()
-    response = bedrock.converse_stream(
-        modelId=modelId,
-        messages=messages,
-        
-        system=[{"text": system_prompt}],
-        inferenceConfig={
-            "maxTokens": 4000,
-            "temperature": inference_params["temperature"],
-            "topP": inference_params["top_p"],
-        },
-        additionalModelRequestFields={"top_k": inference_params["top_k"]},
-    )
-
-    stream = response.get("stream")
-    if stream:
-        for event in stream:
-
-            if "contentBlockDelta" in event:
-                result += event["contentBlockDelta"]["delta"]["text"]
-                with data_placeholder.container():
-                    st.write(result)
+#    bedrock = Session().client(
+#        service_name="bedrock-runtime",
+#    )
+#    result = str()
+#    response = bedrock.converse_stream(
+#        modelId=modelId,
+#        messages=messages,
+#        
+#        system=[{"text": system_prompt}],
+#        inferenceConfig={
+#            "maxTokens": 4000,
+#            "temperature": inference_params["temperature"],
+#            "topP": inference_params["top_p"],
+#        },
+#        additionalModelRequestFields={"top_k": inference_params["top_k"]},
+#    )
+#
+#    stream = response.get("stream")
+#    if stream:
+#        for event in stream:
+#
+#            if "contentBlockDelta" in event:
+#                result += event["contentBlockDelta"]["delta"]["text"]
+#                with data_placeholder.container():
+#                    st.write(result)
 # JPL mock
-#    st.write("modelId: ", modelId)
-#    st.write(messages)
-#    st.write(system_prompt)
-#    result = "mock result"
+    st.write("modelId: ", modelId)    
+    st.write(messages)
+    st.write(system_prompt)
+    result = "mock result"
     
     return result
 
@@ -107,7 +111,7 @@ class ConvoChain:
         with open(file_path, "r") as template_file:
             return template_file.read()
 
-    def get_code_messages(self, explain, template):
+    def get_code_messages(self, explain, template, examples):
         messages = list()
 
         if template == "CloudFormation":     
@@ -120,30 +124,38 @@ class ConvoChain:
                         Take this example CloudFormation YAML code as reference:
                             <example1>
                                 {self.read_examples("data/examples/example1.yaml")}
-                            </example1>      
-                        """,
-                        },
+                            </example1>
+                            """
+                        } if "example1" in examples else None,
                         {
                             "text": f"""
                         Take this example CloudFormation YAML code as reference:
                             <example2>
                                 {self.read_examples("data/examples/example2.yaml")}
                             </example2>
-                        """,
-                        },
+                            """
+                        } if "example2" in examples else None,
                         {
                             "text": f"""
                         Take this example CloudFormation YAML code as reference:
                             <example3>
                                 {self.read_examples("data/examples/example3.yaml")}
                             </example3>
-                        """,
-                        },
+                            """
+                        } if "example3" in examples else None,
+                        {  
+                            "text": f"""
+                        Take this example CloudFormation YAML code as reference:
+                            <example4>
+                                {self.read_examples("data/examples/example4.yaml")}
+                            </example4>
+                            """
+                        } if "example4" in examples else None,
                         {"text": CODE_PROMPT.replace("{{ explain }}", explain)},
-                    ],
+                   ],
                 }
             )
-        else:
+        elif template == "Terraform":
             messages.append(
                 {
                     "role": "user",
@@ -176,14 +188,36 @@ class ConvoChain:
                     ],
                 }
             )
+        elif template == "Mermaid":
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "text": f"""
+                        Take this example Mermaid code as reference:
+                            <example1>
+                                {self.read_examples("data/examples/mermaid_example1.mer")}
+                            </example1>      
+                        """,
+                        },
+                        {"text": CODE_PROMPT_MERMAID.replace("{{ explain }}", explain)},
+                    ],
+                }
+            )
+
+        # Remove None values from the list
+        messages[-1]["content"] = [msg for msg in messages[-1]["content"] if msg is not None]
 
         if template == "CloudFormation":     
             return SYS_CODE_PROMPT, messages
-        else:
+        elif template == "Terraform":
             return SYS_CODE_PROMPT_TERRAFORM, messages
+        elif template == "Mermaid":
+            return SYS_CODE_PROMPT_MERMAID, messages
 
 
-    def get_update_messages(self, initial_cfn_code, explain, template):
+    def get_update_messages(self, initial_cfn_code, explain, template, examples):
         messages = list()
 
         if template == "CloudFormation":
@@ -193,35 +227,43 @@ class ConvoChain:
                     "content": [
                         {
                             "text": f"""
-                        Take this example CloudFormation YAML code as a refernce <example1></example1>:
+                            Take this example CloudFormation YAML code as a reference <example1></example1>:
                             <example1>
                                 {self.read_examples("data/examples/example1.yaml")}
-                            </example1>      
-                        """,
-                        },
+                            </example1>
+                            """
+                        } if "example1" in examples else None,
                         {
                             "text": f"""
-                        Take this example CloudFormation YAML code as a refernce <example2></example2>:
+                            Take this example CloudFormation YAML code as a reference <example2></example2>:
                             <example2>
                                 {self.read_examples("data/examples/example2.yaml")}
                             </example2>
-                        """,
-                        },
+                            """
+                        } if "example2" in examples else None,
                         {
                             "text": f"""
-                        Take this example CloudFormation YAML code as a refernce <example3></example3>:
+                            Take this example CloudFormation YAML code as a reference <example3></example3>:
                             <example3>
                                 {self.read_examples("data/examples/example3.yaml")}
                             </example3>
-                        """,
-                        },
+                            """
+                        } if "example3" in examples else None,
+                        {  
+                            "text": f"""
+                            Take this example CloudFormation YAML code as a reference <example4></example4>:
+                            <example4>
+                                {self.read_examples("data/examples/example4.yaml")}
+                            </example4>
+                            """
+                        } if "example4" in examples else None,
                         {
-                            "text": f"Step-by-step explaination of Architecture Diagram \n <explain> {explain} </explain>",
+                            "text": f"Step-by-step explanation of Architecture Diagram \n <explain> {explain} </explain>"
                         },
-                    ],
+                   ],
                 }
             )
-        else:
+        elif template == "Terraform":
             messages.append(
                 {
                     "role": "user",
@@ -256,6 +298,25 @@ class ConvoChain:
                     ],
                 }
             )
+        elif template == "Mermaid":
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "text": f"""
+                        Take this example Mermaid code as reference:
+                            <example1>
+                                {self.read_examples("data/examples/mermaid_example1.mer")}
+                            </example1>      
+                        """,
+                        },
+                        {
+                            "text": f"Step-by-step explaination of Architecture Diagram \n <explain> {explain} </explain>",
+                        },
+                    ],
+                }
+            )
 
 
         messages.append(
@@ -267,7 +328,13 @@ class ConvoChain:
             }
         )
 
+        # Remove None values from the list
+        messages[-1]["content"] = [msg for msg in messages[-1]["content"] if msg is not None]
+
         if template == "CloudFormation":     
             return SYS_UPDATE_PROMPT, messages
-        else:
+        elif template == "Terraform":
             return SYS_UPDATE_PROMPT_TERRAFORM, messages
+        elif template == "Mermaid":
+            return SYS_UPDATE_PROMPT_MERMAID, messages
+
