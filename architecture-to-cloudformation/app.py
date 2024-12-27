@@ -30,19 +30,34 @@ Top_K = st.sidebar.slider("Top K", min_value=0, max_value=500, step=1, value=250
 if modelId is None:
     modelId = "anthropic.claude-3-sonnet-20240229-v1:0"
 
-modelId = st.sidebar.text_input("Model ID", modelId)
+modelId2 = "anthropic.claude-3-opus-20240229-v1:0"
+modelId3 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+modelId4 = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+modelId5 = "anthropic.claude-3-5-haiku-20241022-v1:0"
+
+# JPL adding modelId selection
+modelId = st.sidebar.selectbox(
+    "Select Model ID",
+    [modelId, modelId2, modelId3, modelId4, modelId5],
+)
+
+# JPL adding example selection
+examples = st.sidebar.multiselect(
+    "Select Examples",
+    ["example1", "example2", "example3", "example4"],
+)
 
 # JPL adding CloudFormation Template / Terraform Template selection
-
 template = st.sidebar.selectbox(
     "Select Template",
-    ["CloudFormation", "Terraform"],
+    ["CloudFormation", "Terraform", "Mermaid","FedRAMP",],
 )
 
 bedrock = util.Model(
     modelId=modelId,
     inference_params={"temperature": Temperature, "top_p": Top_P, "top_k": Top_K},
     template=template,
+    examples=examples,
 )
 
 if st.button("Clear", type="secondary"):
