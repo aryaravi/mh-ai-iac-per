@@ -29,11 +29,10 @@ Top_K = st.sidebar.slider("Top K", min_value=0, max_value=500, step=1, value=250
 # JPL adding modelId override
 if modelId is None:
     modelId = "anthropic.claude-3-sonnet-20240229-v1:0"
-
-modelId2 = "anthropic.claude-3-opus-20240229-v1:0"
-modelId3 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-modelId4 = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-modelId5 = "anthropic.claude-3-5-haiku-20241022-v1:0"
+    modelId2 = "anthropic.claude-3-opus-20240229-v1:0"
+    modelId3 = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    modelId4 = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+    modelId5 = "anthropic.claude-3-5-haiku-20241022-v1:0"
 
 # JPL adding modelId selection
 modelId = st.sidebar.selectbox(
