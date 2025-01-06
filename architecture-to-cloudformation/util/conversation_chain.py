@@ -33,7 +33,8 @@ def invoke_model(
         
         system=[{"text": system_prompt}],
         inferenceConfig={
-            "maxTokens": 4000,
+#            "maxTokens": 4000,
+            "maxTokens": 10000,
             "temperature": inference_params["temperature"],
             "topP": inference_params["top_p"],
         },
@@ -330,7 +331,7 @@ class ConvoChain:
         )
 
         # Remove None values from the list
-        messages[-1]["content"] = [msg for msg in messages[-1]["content"] if msg is not None]
+        messages[-2]["content"] = [msg for msg in messages[-2]["content"] if msg is not None]
 
         if template == "CloudFormation":     
             return SYS_UPDATE_PROMPT, messages
