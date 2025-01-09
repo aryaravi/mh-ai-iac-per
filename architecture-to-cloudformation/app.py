@@ -44,19 +44,23 @@ modelId = st.sidebar.selectbox(
 # JPL adding example selection
 examples = st.sidebar.multiselect(
     "Select Examples",
-    ["example1", "example2", "example3", "example4"],
+    ["example1", "example2", "example3", "example4", "example5"],
 )
 
 # JPL adding CloudFormation Template / Terraform Template selection
 template = st.sidebar.selectbox(
     "Select Template",
-    ["CloudFormation", "Terraform", "Mermaid","FedRAMP",],
+    ["CloudFormation", "Terraform", "Mermaid",],
 )
+
+# JPL adding fedramp selection
+fedramp = st.sidebar.checkbox("Include FedRAMP")
 
 bedrock = util.Model(
     modelId=modelId,
     inference_params={"temperature": Temperature, "top_p": Top_P, "top_k": Top_K},
     template=template,
+    fedramp=fedramp,
     examples=examples,
 )
 

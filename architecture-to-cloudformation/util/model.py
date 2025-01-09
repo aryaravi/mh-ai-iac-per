@@ -5,12 +5,13 @@ from util.conversation_chain import ConvoChain, backoff_mechanism, invoke_model
 import copy
 
 class Model:
-    def __init__(self, inference_params, modelId, template, examples) -> None:
+    def __init__(self, inference_params, modelId, template, fedramp, examples) -> None:
         self._chain = ConvoChain()
         self._inference_params = inference_params
         self._modelId = modelId
         self._template = template
         self._examples = examples
+        self._fedramp = fedramp
 
     def invoke_explain_model(self, image, image_type, data_placeholder):
 
@@ -40,7 +41,7 @@ class Model:
             raise BaseException("explain not found")
 
         system_prompt, messages = self._chain.get_code_messages(
-            st.session_state["explain"], self._template, self._examples
+            st.session_state["explain"], self._template, self._fedramp, self._examples
         )
 
         initial_cfn_code = backoff_mechanism(
@@ -55,7 +56,7 @@ class Model:
         if not self.check_memory():
             st.session_state["system_prompt"], st.session_state["messages"] = (
                 self._chain.get_update_messages(
-                    initial_cfn_code, st.session_state["explain"], self._template, self._examples
+                    initial_cfn_code, st.session_state["explain"], self._template, self._fedramp, self._examples
                 )
             )
 
