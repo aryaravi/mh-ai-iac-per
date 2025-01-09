@@ -54,8 +54,8 @@ template = st.sidebar.selectbox(
 )
 
 # JPL adding fedramp selection
-fedramp = st.sidebar.button("Include FedRAMP")
-    
+fedramp = st.sidebar.checkbox("Include FedRAMP")
+
 bedrock = util.Model(
     modelId=modelId,
     inference_params={"temperature": Temperature, "top_p": Top_P, "top_k": Top_K},

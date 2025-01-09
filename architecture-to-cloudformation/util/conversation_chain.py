@@ -177,7 +177,7 @@ class ConvoChain:
 
                         {
                             "text": f"""
-                        Take this example Terraform HCL code as reference:
+                        Take this example Terraform tf code as reference:
                             <example1>
                                 {self.read_examples("data/examples/example1.tf")}
                             </example1>
@@ -185,7 +185,7 @@ class ConvoChain:
                         } if "example1" in examples else None,
                         {
                             "text": f"""
-                        Take this example Terraform HCL code as reference:
+                        Take this example Terraform tf code as reference:
                             <example2>
                                 {self.read_examples("data/examples/example2.tf")}
                             </example2>
@@ -193,7 +193,7 @@ class ConvoChain:
                         } if "example2" in examples else None,
                         {
                             "text": f"""
-                        Take this example Terraform HCL code as reference:
+                        Take this example Terraform tf code as reference:
                             <example3>
                                 {self.read_examples("data/examples/example3.tf")}
                             </example3>
@@ -201,7 +201,7 @@ class ConvoChain:
                         } if "example3" in examples else None,
                         {  
                             "text": f"""
-                        Take this example Terraform HCL code as reference:
+                        Take this example Terraform tf code as reference:
                             <example4>
                                 {self.read_examples("data/examples/example4.tf")}
                             </example4>
@@ -209,7 +209,7 @@ class ConvoChain:
                         } if "example4" in examples else None,
                         {  
                             "text": f"""
-                        Take this example Terraform HCL code as reference:
+                        Take this example Terraform tf code as reference:
                             <example5>
                                 {self.read_examples("data/examples/example5.tf")}
                             </example5>
@@ -247,9 +247,9 @@ class ConvoChain:
                 return SYS_CODE_PROMPT, messages
         elif template == "Terraform":
             if fedramp:
-                return SYS_CODE_PROMPT_TERRAFORM, messages
-            else:
                 return SYS_CODE_PROMPT_TERRAFORM_FEDRAMP, messages
+            else:
+                return SYS_CODE_PROMPT_TERRAFORM, messages
         elif template == "Mermaid":
             return SYS_CODE_PROMPT_MERMAID, messages
 
@@ -316,7 +316,7 @@ class ConvoChain:
 
                         {
                             "text": f"""
-                            Take this example Terraform HCL code as a refernce <example1></example1>:
+                            Take this example Terraform tf code as a refernce <example1></example1>:
                             <example1>
                                 {self.read_examples("data/examples/example1.tf")}
                             </example1>
@@ -324,7 +324,7 @@ class ConvoChain:
                         } if "example1" in examples else None,
                         {
                             "text": f"""
-                            Take this example Terraform HCL code as a refernce <example2></example2>:
+                            Take this example Terraform tf code as a refernce <example2></example2>:
                             <example2>
                                 {self.read_examples("data/examples/example2.tf")}
                             </example2>
@@ -332,7 +332,7 @@ class ConvoChain:
                         } if "example2" in examples else None,
                         {
                             "text": f"""
-                            Take this example Terraform HCL code as a refernce <example3></example3>:
+                            Take this example Terraform tf code as a refernce <example3></example3>:
                             <example3>
                                 {self.read_examples("data/examples/example3.tf")}
                             </example3>
@@ -340,7 +340,7 @@ class ConvoChain:
                         } if "example3" in examples else None,
                         {  
                             "text": f"""
-                            Take this example Terraform HCL code as a refernce <example4></example4>:
+                            Take this example Terraform tf code as a refernce <example4></example4>:
                             <example4>
                                 {self.read_examples("data/examples/example4.tf")}
                             </example4>
@@ -348,7 +348,7 @@ class ConvoChain:
                         } if "example4" in examples else None,
                         {  
                             "text": f"""
-                            Take this example Terraform HCL code as a refernce <example5></example5>:
+                            Take this example Terraform tf code as a refernce <example5></example5>:
                             <example5>
                                 {self.read_examples("data/examples/example5.tf")}
                             </example5>
