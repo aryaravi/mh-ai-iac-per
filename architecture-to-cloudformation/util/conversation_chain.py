@@ -37,8 +37,8 @@ def invoke_model(
         
         system=[{"text": system_prompt}],
         inferenceConfig={
-#            "maxTokens": 4000,
-            "maxTokens": 8000,
+            "maxTokens": 4000,
+ #           "maxTokens": 8000,
             "temperature": inference_params["temperature"],
             "topP": inference_params["top_p"],
         },
