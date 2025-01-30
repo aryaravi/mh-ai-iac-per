@@ -1,5 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: '3-Tier Architecture with VPC, Subnets, EC2, RDS, and Application Load Balancer'
+Description: >
+  This template creates a 3-tier architecture with VPC, subnets, EC2 instances, RDS, and Application Load Balancer,
+  with additional FedRAMP best practices such as encryption, logging, and monitoring.
 
 Parameters:
   EnvironmentName:
@@ -47,6 +49,20 @@ Parameters:
     Default: db.t3.micro
 
 Resources:
+  # KMS Key for Encryption
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: "KMS Key for encrypting data"
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: arn:aws:iam::${AWS::AccountId}:root
+            Action: "kms:*"
+            Resource: "*"
+
   # VPC
   VPC:
     Type: AWS::EC2::VPC
@@ -72,7 +88,7 @@ Resources:
       InternetGatewayId: !Ref InternetGateway
       VpcId: !Ref VPC
 
-  # Public Subnets
+  # Subnets
   PublicSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -95,7 +111,6 @@ Resources:
         - Key: Name
           Value: !Sub ${EnvironmentName}-PublicSubnet2
 
-  # Private Application Subnets
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -116,7 +131,6 @@ Resources:
         - Key: Name
           Value: !Sub ${EnvironmentName}-PrivateSubnet2
 
-  # Database Subnets
   DBSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
@@ -167,18 +181,6 @@ Resources:
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
-  PublicSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet1
-
-  PublicSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      SubnetId: !Ref PublicSubnet2
-
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -193,18 +195,6 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
       DestinationCidrBlock: 0.0.0.0/0
       NatGatewayId: !Ref NatGateway1
-
-  PrivateSubnet1RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      SubnetId: !Ref PrivateSubnet1
-
-  PrivateSubnet2RouteTableAssociation:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      SubnetId: !Ref PrivateSubnet2
 
   # Security Groups
   ALBSecurityGroup:
@@ -253,6 +243,9 @@ Resources:
         - !Ref PublicSubnet2
       SecurityGroups:
         - !Ref ALBSecurityGroup
+      AccessLoggingPolicy:
+        Enabled: true
+        S3BucketName: !Sub "${EnvironmentName}-alb-logs"  # ALB Access Logs
 
   ALBListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
@@ -277,7 +270,7 @@ Resources:
       UnhealthyThresholdCount: 5
       VpcId: !Ref VPC
 
-  # Launch Template
+  # EC2 Launch Template
   WebServerLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
@@ -311,6 +304,8 @@ Resources:
         - !Ref ALBTargetGroup
       HealthCheckType: ELB
       HealthCheckGracePeriod: 300
+      Monitoring:
+        Enabled: true  # Enable Auto Scaling detailed monitoring
 
   # RDS DB Subnet Group
   DBSubnetGroup:
@@ -336,6 +331,9 @@ Resources:
         - !Ref DBSecurityGroup
       PubliclyAccessible: false
       MultiAZ: true
+      StorageEncrypted: true  # Enable encryption for RDS
+      BackupRetentionPeriod: 7  # Set backup retention period (FedRAMP required)
+      KmsKeyId: !Ref KMSKey  # Use the KMS key for encrypting RDS
 
   # RDS Secret
   RDSSecret:
@@ -347,6 +345,16 @@ Resources:
         GenerateStringKey: password
         PasswordLength: 16
         ExcludeCharacters: '"@/\'
+
+  # VPC Flow Logs
+  VPCFlowLogs:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      TrafficType: ALL
+      LogGroupName: !Sub "/aws/vpc/flowlogs/${EnvironmentName}"
+      DeliverLogsPermissionArn: arn:aws:iam::${AWS::AccountId}:role/flow-logs-role  # IAM role for delivering logs
 
 Outputs:
   ALBDNS:
