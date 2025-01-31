@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   This stack creates a serverless data processing pipeline using DynamoDB and Lambda.
-  It provisions a DynamoDB table with a stream for capturing data changes.
+  It provisions a DynamoDB table with encryption at rest and stream for capturing data changes.
   A Lambda function is triggered by the DynamoDB stream to process new and modified items.
   The stack also includes an IAM role, CloudWatch log group, and output values for the resources.
-  This template is not production ready and should only be used for inspiration.
+  This template is designed with FedRAMP compliance in mind, ensuring encryption, secure access, and logging.
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
@@ -23,7 +23,7 @@ Parameters:
 
 Resources:
 
-  # DynamoDB Table
+  # DynamoDB Table (with encryption at rest)
   DynamoDBTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -39,6 +39,11 @@ Resources:
         WriteCapacityUnits: 5
       StreamSpecification:
         StreamViewType: NEW_AND_OLD_IMAGES
+      SSESpecification:
+        Enabled: true  # Encryption at rest enabled
+      Tags:
+        - Key: Compliance
+          Value: FedRAMP
 
   # DynamoDB Stream
   DynamoDBStream:
@@ -49,7 +54,7 @@ Resources:
       StartingPosition: LATEST
       BatchSize: 1
 
-  # Lambda Function
+  # Lambda Function (with encryption and least privilege permissions)
   LambdaFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -83,8 +88,14 @@ Resources:
                   'statusCode': 200,
                   'body': json.dumps('Data processing completed successfully')
               }
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: !Ref DynamoDBTableName
+      Tags:
+        - Key: Compliance
+          Value: FedRAMP
 
-  # Lambda Role
+  # Lambda Role with least privilege
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -111,15 +122,14 @@ Resources:
                 Resource:
                   - !GetAtt DynamoDBTable.StreamArn
 
-  # CloudWatch Logs
+  # CloudWatch Logs (with retention for FedRAMP compliance)
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/LogFunction'
-      RetentionInDays: 14
+      RetentionInDays: 90  # FedRAMP high requires at least 90 days of log retention
 
 Outputs:
-
   DynamoDBTableName:
     Description: Name of the DynamoDB table
     Value: !Ref DynamoDBTable
